@@ -1,0 +1,12 @@
+{
+  "name": "RFM69-STM32",
+  "keywords": "rf, radio, wireless, spi",
+  "description": "RFM69 library for RFM69W using STM32, RFM69HW, RFM69CW, RFM69HCW",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/brainelectronics/RFM69-STM32.git"
+  },
+  "frameworks": "arduino",
+  "platforms": "atmelavr"
+}
