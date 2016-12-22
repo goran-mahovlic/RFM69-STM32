@@ -32,6 +32,8 @@
 #include <RFM69registers.h>
 #include <SPI.h>
 
+//#define _slaveSelectPin PA4    //SPI_1 Chip Select pin is PA4. You can change it to the STM32 pin you want.
+
 volatile uint8_t RFM69STM32::DATA[RF69_MAX_DATA_LEN];
 volatile uint8_t RFM69STM32::_mode;        // current transceiver state
 volatile uint8_t RFM69STM32::DATALEN;
@@ -88,24 +90,43 @@ bool RFM69STM32::initialize(uint8_t spiPort, uint8_t freqBand, uint8_t nodeID, u
     {255, 0}
   };
 
-  digitalWrite(_slaveSelectPin, HIGH);
-  pinMode(_slaveSelectPin, OUTPUT);
 
+
+  
+/*
   // select the correct SPI on init of RFM at radio.initialize(SPIPORT,FREQUENCY,NODEID,NETWORKID);
   switch(spiPort)
   {
+    case 1:
+      SPIClass SPI(1);
+      //SPI.begin();
+      break;
     case 2:
-      SPIClass SPI_def(2);
-      SPI_def.begin();
+     // SPIClass SPI(2);
+      //SPI.begin();
+      break;
     case 3:
-      SPIClass SPI_def(3);
-      SPI_def.begin();
+     // SPIClass SPI(3);
+      //SPI.begin();
+      break;
     default:
       //SPI.begin();  // default SPI
-      SPIClass SPI_def(1);  // use 1 because in the SPI.h it is decreased by -1, because of indexing starts at zero
-      SPI_def.begin();
+      //SPIClass SPI(1);  // use 1 because in the SPI.h it is decreased by -1, because of indexing starts at zero
+      break;
+    SPI.begin();
+      
+
   }
-  // SPI.begin();
+*/
+
+ 
+  SPI.begin();
+  SPI.setBitOrder(MSBFIRST); // Set the SPI_1 bit order
+//  SPI.setDataMode(SPI_MODE0); //Set the  SPI_2 data mode 0
+  SPI.setClockDivider(SPI_CLOCK_DIV16);      // Slow speed (72 / 16 = 4.5 MHz SPI_1 speed)
+  pinMode(_slaveSelectPin, OUTPUT);
+  digitalWrite(_slaveSelectPin, HIGH);
+
   unsigned long start = millis();
   uint8_t timeout = 50;
   do writeReg(REG_SYNCVALUE1, 0xAA); while (readReg(REG_SYNCVALUE1) != 0xaa && millis()-start < timeout);
@@ -307,14 +328,14 @@ void RFM69STM32::sendFrame(uint8_t toAddress, const void* buffer, uint8_t buffer
 
   // write to FIFO
   select();
-  SPI_def.transfer(REG_FIFO | 0x80);
-  SPI_def.transfer(bufferSize + 3);
-  SPI_def.transfer(toAddress);
-  SPI_def.transfer(_address);
-  SPI_def.transfer(CTLbyte);
+  SPI.transfer(REG_FIFO | 0x80);
+  SPI.transfer(bufferSize + 3);
+  SPI.transfer(toAddress);
+  SPI.transfer(_address);
+  SPI.transfer(CTLbyte);
 
   for (uint8_t i = 0; i < bufferSize; i++)
-    SPI_def.transfer(((uint8_t*) buffer)[i]);
+    SPI.transfer(((uint8_t*) buffer)[i]);
   unselect();
 
   // no need to wait for transmit mode to be ready since its handled by the radio
@@ -334,10 +355,10 @@ void RFM69STM32::interruptHandler() {
     //RSSI = readRSSI();
     setMode(RF69_MODE_STANDBY);
     select();
-    SPI_def.transfer(REG_FIFO & 0x7F);
-    PAYLOADLEN = SPI_def.transfer(0);
+    SPI.transfer(REG_FIFO & 0x7F);
+    PAYLOADLEN = SPI.transfer(0);
     PAYLOADLEN = PAYLOADLEN > 66 ? 66 : PAYLOADLEN; // precaution
-    TARGETID = SPI_def.transfer(0);
+    TARGETID = SPI.transfer(0);
     if(!(_promiscuousMode || TARGETID == _address || TARGETID == RF69_BROADCAST_ADDR) // match this node's address, or broadcast address or anything in promiscuous mode
        || PAYLOADLEN < 3) // address situation could receive packets that are malformed and don't fit this libraries extra fields
     {
@@ -349,8 +370,8 @@ void RFM69STM32::interruptHandler() {
     }
 
     DATALEN = PAYLOADLEN - 3;
-    SENDERID = SPI_def.transfer(0);
-    uint8_t CTLbyte = SPI_def.transfer(0);
+    SENDERID = SPI.transfer(0);
+    uint8_t CTLbyte = SPI.transfer(0);
 
     ACK_RECEIVED = CTLbyte & RFM69_CTL_SENDACK; // extract ACK-received flag
     ACK_REQUESTED = CTLbyte & RFM69_CTL_REQACK; // extract ACK-requested flag
@@ -359,7 +380,7 @@ void RFM69STM32::interruptHandler() {
 
     for (uint8_t i = 0; i < DATALEN; i++)
     {
-      DATA[i] = SPI_def.transfer(0);
+      DATA[i] = SPI.transfer(0);
     }
     if (DATALEN < RF69_MAX_DATA_LEN) DATA[DATALEN] = 0; // add null at end of string
     unselect();
@@ -415,9 +436,9 @@ void RFM69STM32::encrypt(const char* key) {
   if (key != 0)
   {
     select();
-    SPI_def.transfer(REG_AESKEY1 | 0x80);
+    SPI.transfer(REG_AESKEY1 | 0x80);
     for (uint8_t i = 0; i < 16; i++)
-      SPI_def.transfer(key[i]);
+      SPI.transfer(key[i]);
     unselect();
   }
   writeReg(REG_PACKETCONFIG2, (readReg(REG_PACKETCONFIG2) & 0xFE) | (key ? 1 : 0));
@@ -440,8 +461,8 @@ int16_t RFM69STM32::readRSSI(bool forceTrigger) {
 uint8_t RFM69STM32::readReg(uint8_t addr)
 {
   select();
-  SPI_def.transfer(addr & 0x7F);
-  uint8_t regval = SPI_def.transfer(0);
+  SPI.transfer(addr & 0x7F);
+  uint8_t regval = SPI.transfer(0);
   unselect();
   return regval;
 }
@@ -449,8 +470,8 @@ uint8_t RFM69STM32::readReg(uint8_t addr)
 void RFM69STM32::writeReg(uint8_t addr, uint8_t value)
 {
   select();
-  SPI_def.transfer(addr | 0x80);
-  SPI_def.transfer(value);
+  SPI.transfer(addr | 0x80);
+  SPI.transfer(value);
   unselect();
 }
 
@@ -463,9 +484,9 @@ void RFM69STM32::select() {
   _SPSR = SPSR;
 #endif
   // set RFM69STM32 SPI settings
-  SPI_def.setDataMode(SPI_MODE0);
-  SPI_def.setBitOrder(MSBFIRST);
-  SPI_def.setClockDivider(SPI_CLOCK_DIV4); // decided to slow down from DIV2 after SPI stalling in some instances, especially visible on mega1284p when RFM69 and FLASH chip both present
+  SPI.setDataMode(SPI_MODE0);
+  SPI.setBitOrder(MSBFIRST);
+  SPI.setClockDivider(SPI_CLOCK_DIV4); // decided to slow down from DIV2 after SPI stalling in some instances, especially visible on mega1284p when RFM69 and FLASH chip both present
   digitalWrite(_slaveSelectPin, LOW);
 }
 
@@ -543,8 +564,8 @@ void RFM69STM32::readAllRegs()
   for (uint8_t regAddr = 1; regAddr <= 0x4F; regAddr++)
   {
     select();
-    SPI_def.transfer(regAddr & 0x7F); // send address + r/w bit
-    regVal = SPI_def.transfer(0);
+    SPI.transfer(regAddr & 0x7F); // send address + r/w bit
+    regVal = SPI.transfer(0);
     unselect();
 
     Serial.print(regAddr, HEX);
